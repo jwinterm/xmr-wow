@@ -720,11 +720,14 @@ impl SwapState {
                 role,
                 addresses,
                 counterparty_pubkey,
-                counterparty_pre_sig: Some(pre_sig),
+                my_adaptor_pre_sig,
                 ..
             } => {
-                // Extract the counterparty's secret scalar
-                let extracted_scalar = pre_sig
+                // Extract the counterparty's secret scalar using OUR pre-sig.
+                // Bob completed OUR pre-sig with his secret, so:
+                //   completed.s = my_presig.s_prime + bob_secret
+                //   extracted = completed.s - my_presig.s_prime = bob_secret
+                let extracted_scalar = my_adaptor_pre_sig
                     .extract_secret(counterparty_completed_sig)
                     .map_err(|e| SwapError::Crypto(format!("secret extraction failed: {}", e)))?;
 
@@ -754,10 +757,10 @@ impl SwapState {
                 role,
                 addresses,
                 counterparty_pubkey,
-                counterparty_pre_sig: Some(pre_sig),
+                my_adaptor_pre_sig,
                 ..
             } => {
-                let extracted_scalar = pre_sig
+                let extracted_scalar = my_adaptor_pre_sig
                     .extract_secret(counterparty_completed_sig)
                     .map_err(|e| SwapError::Crypto(format!("secret extraction failed: {}", e)))?;
 
@@ -780,16 +783,6 @@ impl SwapState {
                     extracted_scalar,
                 ))
             }
-            SwapState::WowLocked {
-                counterparty_pre_sig: None,
-                ..
-            }
-            | SwapState::XmrLocked {
-                counterparty_pre_sig: None,
-                ..
-            } => Err(SwapError::InvalidTransition(
-                "cannot claim without counterparty's pre-sig (run exchange-pre-sig first)".into(),
-            )),
             other => Err(SwapError::InvalidTransition(format!(
                 "{:?}",
                 std::mem::discriminant(&other)
@@ -2236,21 +2229,30 @@ mod tests {
             .unwrap();
         let bob_wow_locked = bob_ja.record_wow_lock([0xBB; 32]).unwrap();
 
-        // Extract Bob's pre-sig and create his ClaimProof (completed sig)
+        // Extract Bob's pre-sig for Alice to store as counterparty_pre_sig
         let bob_pre_sig = match &bob_wow_locked {
             SwapState::WowLocked {
                 my_adaptor_pre_sig, ..
             } => my_adaptor_pre_sig.clone(),
             _ => panic!("expected WowLocked"),
         };
-        // Bob completes his own pre-sig with his secret (per protocol: main.rs line 927)
-        let bob_secret_scalar = curve25519_dalek::scalar::Scalar::from_canonical_bytes(bob_secret)
-            .into_option()
-            .unwrap();
-        let bob_completed_sig = bob_pre_sig.complete(&bob_secret_scalar).unwrap();
 
         // Drive Alice to XmrLocked (from JointAddress, creates Alice's pre-sig)
         let alice_xmr_locked = alice_ja.record_xmr_lock([0xAA; 32]).unwrap();
+
+        // Get Alice's pre-sig (Bob will complete this with his secret)
+        let alice_pre_sig = match &alice_xmr_locked {
+            SwapState::XmrLocked {
+                my_adaptor_pre_sig, ..
+            } => my_adaptor_pre_sig.clone(),
+            _ => panic!("expected XmrLocked"),
+        };
+
+        // Bob completes ALICE's pre-sig with his secret (this is the claim proof)
+        let bob_secret_scalar = curve25519_dalek::scalar::Scalar::from_canonical_bytes(bob_secret)
+            .into_option()
+            .unwrap();
+        let bob_completed_sig = alice_pre_sig.complete(&bob_secret_scalar).unwrap();
 
         // Alice receives Bob's pre-sig as counterparty_pre_sig
         let alice_with_presig = alice_xmr_locked
@@ -2258,6 +2260,7 @@ mod tests {
             .unwrap();
 
         // Alice extracts Bob's secret via adaptor sig atomicity
+        // Uses my_adaptor_pre_sig (Alice's own pre-sig) since Bob completed it
         let (complete_state, extracted_scalar) = alice_with_presig
             .complete_with_adaptor_claim(&bob_completed_sig)
             .unwrap();
@@ -2272,14 +2275,13 @@ mod tests {
         );
     }
 
-    /// Regression test for bug #4 error path: complete_with_adaptor_claim from
-    /// XmrLocked without counterparty_pre_sig must fail with a clear error.
+    /// Verify complete_with_adaptor_claim fails with wrong completed sig
+    /// (dummy zeros won't produce a valid counterparty secret).
     #[test]
-    fn test_complete_with_adaptor_claim_from_xmr_locked_no_presig() {
+    fn test_complete_with_adaptor_claim_from_xmr_locked_wrong_sig() {
         let (alice, _, bob, _) = make_alice_bob();
         let (bob_pub, bob_proof) = get_pubkey_and_proof(&bob);
 
-        // Drive Alice to XmrLocked without receiving counterparty pre-sig
         let alice_xmr_locked = alice
             .receive_counterparty_key(bob_pub, &bob_proof)
             .unwrap()
@@ -2288,18 +2290,13 @@ mod tests {
             .record_xmr_lock([0xAA; 32])
             .unwrap();
 
-        // Create a dummy completed sig
+        // A dummy completed sig won't extract a valid secret
         let dummy_completed = CompletedSignature {
             r_t: [0u8; 32],
             s: [0u8; 32],
         };
 
         let result = alice_xmr_locked.complete_with_adaptor_claim(&dummy_completed);
-        assert!(result.is_err(), "must fail without counterparty pre-sig");
-        let err_msg = format!("{}", result.unwrap_err());
-        assert!(
-            err_msg.contains("pre-sig"),
-            "error should mention pre-sig, got: {err_msg}"
-        );
+        assert!(result.is_err(), "must fail with wrong completed sig");
     }
 }
