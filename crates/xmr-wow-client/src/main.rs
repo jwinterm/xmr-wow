@@ -111,6 +111,9 @@ enum Command {
         /// Block height to start scanning from (avoids full rescan)
         #[arg(long, default_value = "0")]
         scan_from: u64,
+        /// Bypass refund checkpoint gate (use only for testing)
+        #[arg(long)]
+        accept_risk: bool,
     },
     /// Bob: lock WOW to the joint address (first lock)
     LockWow {
@@ -130,6 +133,9 @@ enum Command {
         /// Block height to start scanning from (avoids full rescan)
         #[arg(long, default_value = "0")]
         scan_from: u64,
+        /// Bypass refund checkpoint gate (use only for testing)
+        #[arg(long)]
+        accept_risk: bool,
     },
     /// Exchange adaptor pre-signatures after both parties lock
     ExchangePreSig {
@@ -951,6 +957,7 @@ async fn main() -> anyhow::Result<()> {
             view_key,
             mnemonic,
             scan_from,
+            accept_risk,
         } => {
             let password = get_password(cli.password.as_deref())?;
             let salt = store.get_or_create_salt()?;
@@ -985,7 +992,11 @@ async fn main() -> anyhow::Result<()> {
             if role != SwapRole::Alice {
                 anyhow::bail!("lock-xmr is for Alice only (you are Bob)");
             }
-            require_checkpoint_ready(&state, RefundCheckpointName::BeforeXmrLock, "lock-xmr")?;
+            if accept_risk {
+                eprintln!("WARNING: --accept-risk bypassing before_xmr_lock checkpoint");
+            } else {
+                require_checkpoint_ready(&state, RefundCheckpointName::BeforeXmrLock, "lock-xmr")?;
+            }
 
             // Compute joint spend point and view scalar
             let (joint_spend, view_scalar) =
@@ -1074,6 +1085,7 @@ async fn main() -> anyhow::Result<()> {
             view_key,
             mnemonic,
             scan_from,
+            accept_risk,
         } => {
             let password = get_password(cli.password.as_deref())?;
             let salt = store.get_or_create_salt()?;
@@ -1097,7 +1109,11 @@ async fn main() -> anyhow::Result<()> {
             if role != SwapRole::Bob {
                 anyhow::bail!("lock-wow is for Bob only (you are Alice)");
             }
-            require_checkpoint_ready(&state, RefundCheckpointName::BeforeWowLock, "lock-wow")?;
+            if accept_risk {
+                eprintln!("WARNING: --accept-risk bypassing before_wow_lock checkpoint");
+            } else {
+                require_checkpoint_ready(&state, RefundCheckpointName::BeforeWowLock, "lock-wow")?;
+            }
 
             // Compute joint keys
             let (joint_spend, view_scalar) =

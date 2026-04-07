@@ -170,13 +170,18 @@ Both parties should run `show` now. Bob must not proceed to Step 4 unless `befor
 
 ### Step 4: Bob locks WOW
 
+> **Note:** The current keysplit wallet flow has no proven pre-lock refund artifact.
+> The `before_wow_lock` checkpoint will report `unsupported-for-guarantee`.
+> Pass `--accept-risk` to proceed (funds may not be recoverable if the swap fails).
+
 ```bash
 $BIN --password "bob-secret-pw" --db bob-swaps.db lock-wow \
   --swap-id <bob-swap-id> \
   --wow-daemon http://127.0.0.1:34568 \
   --spend-key <bob-wow-spend-key> \
   --view-key <bob-wow-view-key> \
-  --scan-from <recent-wow-height>
+  --scan-from <recent-wow-height> \
+  --accept-risk
 ```
 
 Or:
@@ -186,14 +191,17 @@ $BIN --password "bob-secret-pw" --db bob-swaps.db lock-wow \
   --swap-id <bob-swap-id> \
   --wow-daemon http://127.0.0.1:34568 \
   --mnemonic "word1 ... word25" \
-  --scan-from <recent-wow-height>
+  --scan-from <recent-wow-height> \
+  --accept-risk
 ```
 
 Bob sends the emitted adaptor pre-signature message to Alice.
 
 ### Step 5: Alice locks XMR
 
-Alice checks `before_xmr_lock` first. If it is not `ready`, stop.
+> **Note:** The `before_xmr_lock` checkpoint will report `blocked` because Monero relay
+> policy rejects nonzero `unlock_time` for non-coinbase transactions.
+> Pass `--accept-risk` to proceed (funds may not be recoverable if the swap fails).
 
 ```bash
 $BIN --password "alice-secret-pw" --db alice-swaps.db lock-xmr \
@@ -202,7 +210,8 @@ $BIN --password "alice-secret-pw" --db alice-swaps.db lock-xmr \
   --wow-daemon http://127.0.0.1:34568 \
   --spend-key <alice-xmr-spend-key> \
   --view-key <alice-xmr-view-key> \
-  --scan-from <recent-xmr-height>
+  --scan-from <recent-xmr-height> \
+  --accept-risk
 ```
 
 Or:
@@ -213,7 +222,8 @@ $BIN --password "alice-secret-pw" --db alice-swaps.db lock-xmr \
   --xmr-daemon http://127.0.0.1:38081 \
   --wow-daemon http://127.0.0.1:34568 \
   --mnemonic "word1 ... word25" \
-  --scan-from <recent-xmr-height>
+  --scan-from <recent-xmr-height> \
+  --accept-risk
 ```
 
 Alice sends the emitted adaptor pre-signature message to Bob.
