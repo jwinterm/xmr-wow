@@ -1,0 +1,64 @@
+digraph happy_path {
+    rankdir=TB;
+    fontname="Helvetica";
+    node [fontname="Helvetica", fontsize=11, shape=box, style="rounded,filled", fillcolor="#e8f4fd", color="#2980b9"];
+    edge [fontname="Helvetica", fontsize=9, color="#555555"];
+
+    label=<<B>XMR-WOW Atomic Swap: Happy Path</B><BR/><FONT POINT-SIZE="10">Alice swaps XMR for WOW, Bob swaps WOW for XMR</FONT>>;
+    labelloc=t;
+    fontsize=16;
+
+    subgraph cluster_setup {
+        label="Setup Phase";
+        style="dashed"; color="#999999"; fontsize=12;
+
+        step1 [label=<<B>Step 1: Alice Init</B><BR/>Generate key (k_a, K_a)<BR/>Record chain heights<BR/>Compute refund heights<BR/><FONT COLOR="#888888">State: KeyGeneration</FONT>>, fillcolor="#d5e8d4"];
+        step2 [label=<<B>Step 2: Bob Response</B><BR/>Generate key (k_b, K_b)<BR/>Verify Alice DLEQ proof<BR/>Derive joint addresses<BR/><FONT COLOR="#888888">State: JointAddress</FONT>>, fillcolor="#dae8fc"];
+        step3 [label=<<B>Step 3: Alice Import</B><BR/>Verify Bob DLEQ proof<BR/>Derive same joint addresses<BR/>Swap ID = Hash(K_a || K_b)<BR/><FONT COLOR="#888888">State: JointAddress</FONT>>, fillcolor="#d5e8d4"];
+
+        step1 -> step2 [label="  Init msg:\n  K_a, DLEQ, amounts,\n  refund heights  ", color="#27ae60", fontcolor="#27ae60"];
+        step2 -> step3 [label="  Response msg:\n  K_b, DLEQ,\n  bob_refund_addr  ", color="#2980b9", fontcolor="#2980b9"];
+    }
+
+    subgraph cluster_lock {
+        label="Lock Phase (on-chain)";
+        style="dashed"; color="#999999"; fontsize=12;
+
+        step4 [label=<<B>Step 4: Bob Locks WOW</B><BR/>Send WOW to joint address<BR/>Create adaptor pre-sig<BR/>(adapted by K_a)<BR/><FONT COLOR="#888888">State: WowLocked</FONT>>, fillcolor="#dae8fc"];
+        step5 [label=<<B>Step 5: Alice Locks XMR</B><BR/>Verify Bob's WOW lock on-chain<BR/>Send XMR to joint address<BR/>Create adaptor pre-sig<BR/>(adapted by K_b)<BR/><FONT COLOR="#888888">State: XmrLocked</FONT>>, fillcolor="#d5e8d4"];
+        step6 [label=<<B>Step 6: Exchange Pre-Sigs</B><BR/>Both verify counterparty<BR/>adaptor pre-signatures<BR/><FONT COLOR="#888888">Both store counterparty pre-sig</FONT>>];
+
+        step4 -> step5 [label="  Pre-sig msg:\n  Bob's adaptor sig  ", color="#2980b9", fontcolor="#2980b9"];
+        step5 -> step6 [label="  Pre-sig msg:\n  Alice's adaptor sig  ", color="#27ae60", fontcolor="#27ae60"];
+    }
+
+    subgraph cluster_claim {
+        label="Claim Phase (atomic)";
+        style="dashed"; color="#999999"; fontsize=12;
+
+        step7 [label=<<B>Step 7: Bob Claim Proof</B><BR/>Complete Alice's pre-sig<BR/>with his secret k_b<BR/>s = s' + k_b>, fillcolor="#dae8fc"];
+        step8 [label=<<B>Step 8: Alice Claims WOW</B><BR/>Extract k_b = s - s'<BR/>Compute k_combined = k_a + k_b<BR/>Sweep WOW to her wallet<BR/>Complete Bob's pre-sig with k_a<BR/><FONT COLOR="#888888">State: Complete</FONT>>, fillcolor="#d5e8d4"];
+        step9 [label=<<B>Step 9: Bob Claims XMR</B><BR/>Extract k_a = s - s'<BR/>Compute k_combined = k_a + k_b<BR/>Sweep XMR to his wallet<BR/><FONT COLOR="#888888">State: Complete</FONT>>, fillcolor="#dae8fc"];
+        done [label=<<B>Swap Complete</B><BR/>Alice has WOW<BR/>Bob has XMR>, shape=doubleoctagon, fillcolor="#d4edda", color="#28a745"];
+
+        step7 -> step8 [label="  Claim proof:\n  completed sig  ", color="#2980b9", fontcolor="#2980b9"];
+        step8 -> step9 [label="  Claim proof:\n  completed sig  ", color="#27ae60", fontcolor="#27ae60"];
+        step9 -> done;
+    }
+
+    step3 -> step4;
+    step6 -> step7;
+
+    subgraph cluster_legend {
+        label="Legend"; style="dashed"; color="#999999"; fontsize=10;
+        rank=same;
+        node [shape=plaintext, fillcolor=white];
+        leg [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="4">
+            <TR><TD BGCOLOR="#d5e8d4" BORDER="1" STYLE="ROUNDED"> Alice action </TD>
+                <TD BGCOLOR="#dae8fc" BORDER="1" STYLE="ROUNDED"> Bob action </TD>
+                <TD BGCOLOR="#e8f4fd" BORDER="1" STYLE="ROUNDED"> Both </TD></TR>
+            <TR><TD COLSPAN="3"><FONT COLOR="#27ae60">Green arrows = Alice sends</FONT></TD></TR>
+            <TR><TD COLSPAN="3"><FONT COLOR="#2980b9">Blue arrows = Bob sends</FONT></TD></TR>
+        </TABLE>>];
+    }
+}

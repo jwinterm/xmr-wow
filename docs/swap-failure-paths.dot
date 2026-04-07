@@ -1,0 +1,78 @@
+digraph failure_paths {
+    rankdir=TB;
+    fontname="Helvetica";
+    node [fontname="Helvetica", fontsize=11, shape=box, style="rounded,filled", fillcolor="#e8f4fd", color="#2980b9"];
+    edge [fontname="Helvetica", fontsize=9, color="#555555"];
+
+    label=<<B>XMR-WOW Atomic Swap: Failure and Refund Paths</B><BR/><FONT POINT-SIZE="10">What happens when the swap fails at each stage</FONT>>;
+    labelloc=t;
+    fontsize=16;
+
+    // Normal flow (simplified)
+    setup [label=<<B>Setup Complete</B><BR/>Steps 1-3 done<BR/>Joint addresses derived<BR/>No funds at risk yet>, fillcolor="#d4edda"];
+
+    bob_locks [label=<<B>Bob Locks WOW</B><BR/>Step 4: WOW sent to<BR/>joint address on-chain>, fillcolor="#dae8fc"];
+
+    alice_locks [label=<<B>Alice Locks XMR</B><BR/>Step 5: XMR sent to<BR/>joint address on-chain>, fillcolor="#d5e8d4"];
+
+    presigs [label=<<B>Pre-Sigs Exchanged</B><BR/>Step 6: Both have<BR/>counterparty pre-sigs>];
+
+    alice_claims [label=<<B>Alice Claims WOW</B><BR/>Step 8: WOW swept<BR/>to Alice's wallet>, fillcolor="#d5e8d4"];
+
+    bob_claims [label=<<B>Bob Claims XMR</B><BR/>Step 9: XMR swept<BR/>to Bob's wallet>, fillcolor="#dae8fc"];
+
+    complete [label=<<B>Swap Complete</B>>, shape=doubleoctagon, fillcolor="#d4edda", color="#28a745"];
+
+    // Happy flow
+    setup -> bob_locks [label="  Step 4  "];
+    bob_locks -> alice_locks [label="  Step 5  "];
+    alice_locks -> presigs [label="  Step 6  "];
+    presigs -> alice_claims [label="  Steps 7-8  "];
+    alice_claims -> bob_claims [label="  Step 9  "];
+    bob_claims -> complete;
+
+    // ========== FAILURE SCENARIOS ==========
+
+    // Failure A: Alice abandons before locking
+    fail_a [label=<<B>Failure A: Alice Abandons</B><BR/><I>After Bob locks WOW (Step 4)</I><BR/><I>Alice never locks XMR</I>>, shape=diamond, fillcolor="#fff3cd", color="#ffc107"];
+    refund_a [label=<<B>Bob Refunds WOW</B><BR/>Wait for wow_refund_height<BR/>(~200 blocks / ~400 min)<BR/>Sweep WOW back to<BR/>Bob's refund address<BR/><BR/><FONT COLOR="#cc0000">Status: unsupported-for-guarantee</FONT><BR/><FONT COLOR="#cc0000">(keysplit refund unproven)</FONT>>, fillcolor="#f8d7da", color="#dc3545"];
+    safe_a [label=<<B>Alice: Safe</B><BR/>Never locked XMR<BR/>Funds still in wallet>, fillcolor="#d4edda", color="#28a745"];
+
+    bob_locks -> fail_a [label="  Alice disappears  ", style=dashed, color="#dc3545", fontcolor="#dc3545"];
+    fail_a -> refund_a;
+    fail_a -> safe_a;
+
+    // Failure B: Both lock, nobody claims
+    fail_b [label=<<B>Failure B: Both Abandon</B><BR/><I>After both lock (Steps 4-5)</I><BR/><I>Neither party claims</I>>, shape=diamond, fillcolor="#fff3cd", color="#ffc107"];
+    refund_b_bob [label=<<B>Bob Refunds WOW</B><BR/>Wait for wow_refund_height<BR/><BR/><FONT COLOR="#cc0000">Status: unsupported-for-guarantee</FONT>>, fillcolor="#f8d7da", color="#dc3545"];
+    refund_b_alice [label=<<B>Alice Refunds XMR</B><BR/>Wait for xmr_refund_height<BR/>TX has unlock_time baked in<BR/><BR/><FONT COLOR="#cc0000">Status: blocked</FONT><BR/><FONT COLOR="#cc0000">(Monero rejects nonzero</FONT><BR/><FONT COLOR="#cc0000">unlock_time relay)</FONT>>, fillcolor="#f8d7da", color="#dc3545"];
+
+    presigs -> fail_b [label="  Both disappear  ", style=dashed, color="#dc3545", fontcolor="#dc3545"];
+    fail_b -> refund_b_bob;
+    fail_b -> refund_b_alice;
+
+    // Failure C: Alice claims WOW, disappears
+    fail_c [label=<<B>Failure C: Alice Disappears</B><BR/><I>After claiming WOW (Step 8)</I><BR/><I>Doesn't send proof to Bob</I>>, shape=diamond, fillcolor="#fff3cd", color="#ffc107"];
+    recover_c [label=<<B>Bob Recovers XMR</B><BR/>Alice's sweep TX is on-chain<BR/>Contains her completed sig<BR/>Bob extracts k_a from chain<BR/>Computes k_combined = k_a + k_b<BR/>Sweeps XMR normally<BR/><BR/><FONT COLOR="#28a745">Atomicity guarantees recovery</FONT>>, fillcolor="#d4edda", color="#28a745"];
+
+    alice_claims -> fail_c [label="  Alice disappears  ", style=dashed, color="#dc3545", fontcolor="#dc3545"];
+    fail_c -> recover_c;
+
+    // Timing constraint
+    subgraph cluster_timing {
+        label="Timelock Safety Invariant";
+        style="dashed"; color="#999999"; fontsize=11;
+        node [shape=note, fillcolor="#fffde7", color="#f9a825"];
+
+        timing [label=<<B>Why WOW lock must be longer than XMR lock</B><BR/><BR/>wow_lock_blocks &gt; xmr_lock_blocks + 100<BR/><BR/>Bob locks WOW first (Step 4), so his refund<BR/>window must expire AFTER Alice has time to:<BR/>  1. Verify WOW lock<BR/>  2. Lock XMR (Step 5)<BR/>  3. Exchange pre-sigs (Step 6)<BR/>  4. Claim WOW (Step 8)<BR/><BR/>If WOW refund expired first, Bob could refund<BR/>WOW while Alice still has XMR locked = theft>];
+    }
+
+    // Atomicity note
+    subgraph cluster_atomicity {
+        label="Adaptor Signature Atomicity";
+        style="dashed"; color="#999999"; fontsize=11;
+        node [shape=note, fillcolor="#e8f5e9", color="#43a047"];
+
+        atomicity [label=<<B>How atomicity works</B><BR/><BR/>Each party creates a pre-sig adapted by the<BR/>other's public key. To complete the sig, you<BR/>must know the adaptor secret (private key).<BR/><BR/>complete(pre_sig, secret) reveals the secret.<BR/>extract(pre_sig, completed) recovers it.<BR/><BR/>If Alice claims WOW, her sweep TX reveals k_a.<BR/>Bob can always extract k_a from the chain.<BR/>Neither party can claim without the other learning.>];
+    }
+}

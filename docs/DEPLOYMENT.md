@@ -14,6 +14,14 @@ The swap flow is:
 8. Alice claims WOW and returns her claim proof.
 9. Bob claims XMR.
 
+### Flow Diagrams
+
+- [Happy path](swap-happy-path.svg) -- the 9-step swap from start to finish
+- [Failure and refund paths](swap-failure-paths.svg) -- what happens when the swap fails at each stage
+- [State machine](swap-state-machine.svg) -- internal SwapState transitions
+
+Source `.dot` files are in this directory; regenerate with `dot -Tsvg <file>.dot -o <file>.svg`.
+
 The repo only documents and supports that sequence when both refund checkpoints below are validated:
 
 - `before_wow_lock`: must be `ready` before Bob runs `lock-wow`
