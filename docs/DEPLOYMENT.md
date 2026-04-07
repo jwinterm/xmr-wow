@@ -252,6 +252,10 @@ Bob sends the emitted `xmrwow1:...` claim proof to Alice.
 
 ### Step 8: Alice claims WOW
 
+> **Note:** The WOW lock output must have at least 4 confirmations before
+> the sweep transaction will be accepted by the network. Wait ~8 minutes
+> after Step 4 if needed.
+
 ```bash
 $BIN --password "alice-secret-pw" --db alice-swaps.db claim-wow \
   --swap-id <alice-swap-id> \
@@ -264,6 +268,10 @@ $BIN --password "alice-secret-pw" --db alice-swaps.db claim-wow \
 Alice sends the emitted `xmrwow1:...` claim proof to Bob.
 
 ### Step 9: Bob claims XMR
+
+> **Note:** The XMR lock output must have at least 10 confirmations before
+> the sweep transaction will be accepted by the network. Wait ~20 minutes
+> after Step 5 if needed.
 
 ```bash
 $BIN --password "bob-secret-pw" --db bob-swaps.db claim-xmr \
@@ -286,7 +294,15 @@ For proof coverage, use:
 
 ### Checkpoint says `blocked` or `unsupported-for-guarantee`
 
-Stop. Do not run the next lock command. The swap is outside the supported refund-required contract.
+The current keysplit wallet flow has no proven pre-lock refund artifact.
+Pass `--accept-risk` to `lock-wow` and `lock-xmr` to proceed when you
+understand that funds may not be recoverable if the swap fails mid-protocol.
+
+### `invalid_input` when claiming (sweep rejected)
+
+The locked output does not have enough confirmations to be spent.
+XMR requires 10 confirmations (~20 min), WOW requires 4 (~8 min).
+Wait for more blocks and retry the claim command.
 
 ### Daemon unreachable
 
